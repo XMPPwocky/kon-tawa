@@ -12,12 +12,13 @@ use egui_winit::winit::{
 };
 use simulation::Array2D;
 use winit_input_helper::WinitInputHelper;
+use rayon::prelude::*;
 
 mod gui;
 mod simulation;
 
-const WIDTH: u32 = 768;
-const HEIGHT: u32 = 768;
+const WIDTH: u32 = 384;
+const HEIGHT: u32 = 384;
 
 struct World {
     pressures: Array2D<f32>,
@@ -148,15 +149,16 @@ impl World {
         let vec_down_right = Vec2::new(1.0, 1.0).normalize();
         let vec_down_left = Vec2::new(-1.0, 1.0).normalize();
 
-        let time = self.ticks as f32 / 160.0;
+        let time = self.ticks as f32 / 16.0;
 
-        for (i, ((front, back), (front_v, back_v))) in self.pressures.iter_mut()
-            .zip(self.pressures_back.iter().cloned())
+        self.pressures.par_iter_mut()
+            .zip(self.pressures_back.par_iter().cloned())
             .zip(
-                self.velocities.iter_mut()
-                .zip(self.velocities_back.iter().cloned())
+                self.velocities.par_iter_mut()
+                .zip(self.velocities_back.par_iter().cloned())
             )
-            .enumerate() {
+            
+            .enumerate().for_each(|(i, ((front, back), (front_v, _back_v)))| {
                 assert!(!back.is_infinite());
                 let x = i as isize % WIDTH as isize;
                 let y = i as isize / WIDTH as isize;
@@ -177,7 +179,7 @@ impl World {
                 let dlgrad = downleft - upright;
 
                 let grad =  Vec2::new(hgrad, vgrad) + (vec_down_left*dlgrad) + (vec_down_right*drgrad);
-                let grad_alpha = 0.025;
+                let grad_alpha = 1.0;
                 let grad_damping = 0.9997;
                 *front_v += grad * grad_alpha;
                 *front_v *= grad_damping;
@@ -187,14 +189,18 @@ impl World {
                 let emitter_offs = Vec2::ZERO; //Vec2::new((time / 12.0).sin(),(time / 12.0).cos()) * 64.0;
                 let emitter = center + emitter_offs;
 
-                if (x ^ emitter.x as isize) & 0xFFFFFFFF == 0 && (y ^ emitter.y as isize) & 0xFFFFFFFF == 0{
+                let emitter_distance_sq = (x as f32 - emitter.x) * (x as f32 - emitter.x) +
+                    (y as f32 - emitter.y) * (y as f32 - emitter.y);
+
+                if emitter_distance_sq <= 12.0 {
                     *front = 10.0 * (time/8.0).sin();
+                    *front_v = Vec2::ZERO;
                 } else {
                     let mut accum = 0.0;
-                    accum += 1.0 * self.velocities_back.get(x - 1, y).copied().unwrap_or(Vec2::ZERO).x;
-                    accum -= 1.0 * self.velocities_back.get(x + 1, y).copied().unwrap_or(Vec2::ZERO).x;
-                    accum += 1.0 * self.velocities_back.get(x, y - 1).copied().unwrap_or(Vec2::ZERO).y;
-                    accum -= 1.0 * self.velocities_back.get(x, y + 1).copied().unwrap_or(Vec2::ZERO).y;
+                    accum += self.velocities_back.get(x - 1, y).copied().unwrap_or(Vec2::ZERO).x;
+                    accum -= self.velocities_back.get(x + 1, y).copied().unwrap_or(Vec2::ZERO).x;
+                    accum += self.velocities_back.get(x, y - 1).copied().unwrap_or(Vec2::ZERO).y;
+                    accum -= self.velocities_back.get(x, y + 1).copied().unwrap_or(Vec2::ZERO).y;
 
                     accum += self.velocities_back.get(x - 1, y - 1).copied().unwrap_or(Vec2::ZERO).dot(vec_down_right);
                     accum -= self.velocities_back.get(x + 1, y + 1).copied().unwrap_or(Vec2::ZERO).dot(vec_down_right);
@@ -203,7 +209,7 @@ impl World {
 
                     *front -= accum / 8.0;
                 }
-            }
+            });
     }
 
     fn draw(&self, frame: &mut [u8]) {
