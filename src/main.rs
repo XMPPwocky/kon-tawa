@@ -204,17 +204,10 @@ impl World {
                 let up = self.pressures_back.get(x, y - 1 ).copied().unwrap_or(0.0);
                 let down = self.pressures_back.get(x, y + 1).copied().unwrap_or(0.0);
 
-                /*let upleft    = self.pressures_back.get(x - 1, y - 1).copied().unwrap_or(0.0);
-                let upright   = self.pressures_back.get(x + 1, y - 1).copied().unwrap_or(0.0);
-                let downleft  = self.pressures_back.get(x - 1, y + 1).copied().unwrap_or(0.0);
-                let downright = self.pressures_back.get(x + 1, y + 1).copied().unwrap_or(0.0);
-                */
                 let hgrad = right - left;
                 let vgrad = down - up;
-                //let drgrad = downright - upleft;
-                //let dlgrad = downleft - upright;
 
-                let grad =  Vec2::new(hgrad, vgrad);// + (vec_down_left*dlgrad) + (vec_down_right*drgrad);
+                let grad =  Vec2::new(hgrad, vgrad);
                 *front_v += grad * params.grad_alpha;
                 *front_v *= 1.0 - params.grad_damping;
 
