@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 use crate::gui::Framework;
+use std::sync::{Arc, Mutex};
 use glam::Vec2;
 use log::error;
 use pixels::{Error, Pixels, SurfaceTexture};
@@ -17,14 +18,33 @@ use rayon::prelude::*;
 mod gui;
 mod simulation;
 
-const WIDTH: u32 = 384;
-const HEIGHT: u32 = 384;
+const WIDTH: u32 = 512;
+const HEIGHT: u32 = 512;
+
+#[derive(Clone, Debug, PartialEq)]
+enum Material {
+    Fluid,
+    Solid,
+    Emitter
+}
+
+struct SimParams {
+    grad_alpha: f32,
+    grad_damping: f32
+}
+impl Default for SimParams {
+    fn default() -> Self {
+        SimParams { grad_alpha: 0.1, grad_damping: 0.9999 }
+    }
+}
 
 struct World {
     pressures: Array2D<f32>,
     pressures_back: Array2D<f32>,
     velocities: Array2D<glam::Vec2>,
     velocities_back: Array2D<glam::Vec2>,
+    materials: Array2D<Material>,
+    params: Arc<Mutex<SimParams>>,
     ticks: u32
 }
 
@@ -41,6 +61,8 @@ fn main() -> Result<(), Error> {
             .unwrap()
     };
 
+    let params = Arc::new(Mutex::new(SimParams::default()));
+
     let (mut pixels, mut framework) = {
         let window_size = window.inner_size();
         let scale_factor = window.scale_factor() as f32;
@@ -52,11 +74,13 @@ fn main() -> Result<(), Error> {
             window_size.height,
             scale_factor,
             &pixels,
+            params.clone()
         );
 
         (pixels, framework)
     };
-    let mut world = World::new();
+
+    let mut world = World::new(params);
 
     event_loop.run(move |event, _, control_flow| {
         // Handle input events
@@ -68,7 +92,7 @@ fn main() -> Result<(), Error> {
             }
 
             if input.key_pressed(VirtualKeyCode::R) || input.quit() {
-                world = World::new();
+                world = World::new(world.params.clone());
                 return;
             }
 
@@ -130,12 +154,22 @@ fn main() -> Result<(), Error> {
 }
 
 impl World {
-    fn new() -> Self {
+    fn new(params: Arc<Mutex<SimParams>>) -> Self {
+        let mut materials = Array2D::new(WIDTH as usize, HEIGHT as usize, Material::Fluid);
+        for y in 224..288 {
+            *materials.get_mut(32, y).unwrap() = Material::Emitter;
+        }
+        for x in 192..196 {
+            for y in 0..HEIGHT as isize { if (y + 0x20) & 0x7F < 0x40 { *materials.get_mut(x, y).unwrap() = Material::Solid; } }
+        }
+        
         Self {
             pressures: Array2D::new(WIDTH as usize, HEIGHT as usize, 0.0),
             pressures_back: Array2D::new(WIDTH as usize, HEIGHT as usize, 0.0),
             velocities: Array2D::new(WIDTH as usize, HEIGHT as usize, Vec2::ZERO),
             velocities_back: Array2D::new(WIDTH as usize, HEIGHT as usize, Vec2::ZERO),
+            materials,
+            params,
             ticks: 0
         }
     }
@@ -145,9 +179,11 @@ impl World {
         std::mem::swap(&mut self.pressures, &mut self.pressures_back);
         std::mem::swap(&mut self.velocities, &mut self.velocities_back);
         self.ticks += 1;
+
+        let params = self.params.lock().unwrap();
         
-        let vec_down_right = Vec2::new(1.0, 1.0).normalize();
-        let vec_down_left = Vec2::new(-1.0, 1.0).normalize();
+        //let vec_down_right = Vec2::new(1.0, 1.0).normalize();
+        //let vec_down_left = Vec2::new(-1.0, 1.0).normalize();
 
         let time = self.ticks as f32 / 16.0;
 
@@ -168,46 +204,38 @@ impl World {
                 let up = self.pressures_back.get(x, y - 1 ).copied().unwrap_or(0.0);
                 let down = self.pressures_back.get(x, y + 1).copied().unwrap_or(0.0);
 
-                let upleft    = self.pressures_back.get(x - 1, y - 1).copied().unwrap_or(0.0);
+                /*let upleft    = self.pressures_back.get(x - 1, y - 1).copied().unwrap_or(0.0);
                 let upright   = self.pressures_back.get(x + 1, y - 1).copied().unwrap_or(0.0);
                 let downleft  = self.pressures_back.get(x - 1, y + 1).copied().unwrap_or(0.0);
                 let downright = self.pressures_back.get(x + 1, y + 1).copied().unwrap_or(0.0);
-
+                */
                 let hgrad = right - left;
                 let vgrad = down - up;
-                let drgrad = downright - upleft;
-                let dlgrad = downleft - upright;
+                //let drgrad = downright - upleft;
+                //let dlgrad = downleft - upright;
 
-                let grad =  Vec2::new(hgrad, vgrad) + (vec_down_left*dlgrad) + (vec_down_right*drgrad);
-                let grad_alpha = 1.0;
-                let grad_damping = 0.9997;
-                *front_v += grad * grad_alpha;
-                *front_v *= grad_damping;
+                let grad =  Vec2::new(hgrad, vgrad);// + (vec_down_left*dlgrad) + (vec_down_right*drgrad);
+                *front_v += grad * params.grad_alpha;
+                *front_v *= 1.0 - params.grad_damping;
 
-                let center = Vec2::new(WIDTH as f32, HEIGHT as f32) / 2.0;
+                let mut accum = 0.0;
 
-                let emitter_offs = Vec2::ZERO; //Vec2::new((time / 12.0).sin(),(time / 12.0).cos()) * 64.0;
-                let emitter = center + emitter_offs;
+                accum += self.velocities_back.get(x - 1, y).copied().unwrap_or(Vec2::ZERO).x;
+                accum -= self.velocities_back.get(x + 1, y).copied().unwrap_or(Vec2::ZERO).x;
+                accum += self.velocities_back.get(x, y - 1).copied().unwrap_or(Vec2::ZERO).y;
+                accum -= self.velocities_back.get(x, y + 1).copied().unwrap_or(Vec2::ZERO).y;
 
-                let emitter_distance_sq = (x as f32 - emitter.x) * (x as f32 - emitter.x) +
-                    (y as f32 - emitter.y) * (y as f32 - emitter.y);
-
-                if emitter_distance_sq <= 12.0 {
-                    *front = 10.0 * (time/8.0).sin();
-                    *front_v = Vec2::ZERO;
-                } else {
-                    let mut accum = 0.0;
-                    accum += self.velocities_back.get(x - 1, y).copied().unwrap_or(Vec2::ZERO).x;
-                    accum -= self.velocities_back.get(x + 1, y).copied().unwrap_or(Vec2::ZERO).x;
-                    accum += self.velocities_back.get(x, y - 1).copied().unwrap_or(Vec2::ZERO).y;
-                    accum -= self.velocities_back.get(x, y + 1).copied().unwrap_or(Vec2::ZERO).y;
-
-                    accum += self.velocities_back.get(x - 1, y - 1).copied().unwrap_or(Vec2::ZERO).dot(vec_down_right);
-                    accum -= self.velocities_back.get(x + 1, y + 1).copied().unwrap_or(Vec2::ZERO).dot(vec_down_right);
-                    accum += self.velocities_back.get(x + 1, y - 1).copied().unwrap_or(Vec2::ZERO).dot(vec_down_left);
-                    accum -= self.velocities_back.get(x - 1, y + 1).copied().unwrap_or(Vec2::ZERO).dot(vec_down_left);
-
-                    *front -= accum / 8.0;
+                match self.materials.get(x, y).unwrap() {
+                    Material::Fluid => {
+                        *front -= accum / 8.0;
+                    },
+                    Material::Emitter => {
+                        *front = 2.5 * (time/3.0).sin();
+                    },
+                    Material::Solid => {
+                        *front = 0.0;
+                        *front_v = Vec2::ZERO;
+                    }
                 }
             });
     }
@@ -219,11 +247,12 @@ impl World {
 
             let p = self.pressures[x + (y * WIDTH as usize)];
             let pos = p > 0.0;
-
+            let is_solid = matches!(self.materials[x + (y * WIDTH as usize)], Material::Solid | Material::Emitter);
+            let g = if is_solid { 0xff } else { 0x00 };
             let rgba = if pos {
-                [(p * 255.0) as u8, 0x0, 0x0, 0xff]
+                [(p * 255.0) as u8, g, 0x0, 0xff]
             } else {
-                [0, 0, (-p * 255.0) as u8, 0xff]
+                [0, g, (-p * 255.0) as u8, 0xff]
             };
 
             pixel.copy_from_slice(&rgba);

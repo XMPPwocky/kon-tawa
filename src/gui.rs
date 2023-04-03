@@ -1,7 +1,11 @@
+use std::sync::{Arc, Mutex};
+
 use egui::{ClippedPrimitive, Context, TexturesDelta};
 use egui_wgpu::renderer::{Renderer, ScreenDescriptor};
 use pixels::{wgpu, PixelsContext};
 use egui_winit::winit::{self, event_loop::EventLoopWindowTarget, window::Window};
+
+use crate::SimParams;
 
 /// Manages all state required for rendering egui over `Pixels`.
 pub(crate) struct Framework {
@@ -17,24 +21,27 @@ pub(crate) struct Framework {
     gui: Gui,
 }
 
-/// Example application state. A real application will need a lot more state than this.
 struct Gui {
     /// Only show the egui window when true.
     window_open: bool,
+
+    params: Arc<Mutex<SimParams>>
 }
 
 impl Framework {
-    /// Create egui.
     pub(crate) fn new<T>(
         event_loop: &EventLoopWindowTarget<T>,
         width: u32,
         height: u32,
         scale_factor: f32,
         pixels: &pixels::Pixels,
+
+        params: Arc<Mutex<SimParams>>,
     ) -> Self {
         let max_texture_size = pixels.device().limits().max_texture_dimension_2d as usize;
 
         let egui_ctx = Context::default();
+        setup_custom_fonts(&egui_ctx);
         let mut egui_state = egui_winit::State::new(event_loop);
         egui_state.set_max_texture_side(max_texture_size);
         egui_state.set_pixels_per_point(scale_factor);
@@ -44,7 +51,7 @@ impl Framework {
         };
         let renderer = Renderer::new(pixels.device(), pixels.render_texture_format(), None, 1);
         let textures = TexturesDelta::default();
-        let gui = Gui::new();
+        let gui = Gui::new(params);
 
         Self {
             egui_ctx,
@@ -138,8 +145,8 @@ impl Framework {
 
 impl Gui {
     /// Create a `Gui`.
-    fn new() -> Self {
-        Self { window_open: false }
+    fn new(params: Arc<Mutex<SimParams>>) -> Self {
+        Self { window_open: true, params }
     }
 
     /// Create the UI using egui.
@@ -155,18 +162,52 @@ impl Gui {
             });
         });*/
 
-        egui::Window::new("Hello, egui!")
+        let mut params = self.params.lock().unwrap();
+
+            egui::Window::new("\u{F1924}")
             .open(&mut self.window_open)
             .show(ctx, |ui| {
-                ui.label("This example demonstrates using egui with pixels.");
+                ui.label("\u{F193F}\u{F1906}");
 
                 ui.separator();
 
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x /= 2.0;
-                    ui.label("Learn more about egui at");
-                    ui.hyperlink("https://docs.rs/egui");
-                });
+                ui.add(egui::Slider::new(&mut params.grad_alpha, 0.0..=1.0).logarithmic(true)
+                    .text("󱥵󱤈󱤝")
+                );
+                ui.add(egui::Slider::new(&mut params.grad_damping, 0.0..=1.0).logarithmic(true)
+                .text("󱥵󱥶")
+            );
             });
     }
+}
+
+fn setup_custom_fonts(ctx: &egui::Context) {
+    // Start with the default fonts (we will be adding to them rather than replacing them).
+    let mut fonts = egui::FontDefinitions::default();
+
+    // Install my own font (maybe supporting non-latin characters).
+    // .ttf and .otf files supported.
+    fonts.font_data.insert(
+        "nasin-nanpa".to_owned(),
+        egui::FontData::from_static(include_bytes!(
+            "../nasin-nanpa-2.5.1.otf"
+        )),
+    );
+
+    // Put my font first (highest priority) for proportional text:
+    fonts
+        .families
+        .entry(egui::FontFamily::Proportional)
+        .or_default()
+        .insert(0, "nasin-nanpa".to_owned());
+
+    // Put my font as last fallback for monospace:
+    fonts
+        .families
+        .entry(egui::FontFamily::Monospace)
+        .or_default()
+        .insert(0, "nasin-nanpa".to_owned());
+
+    // Tell egui to use these fonts:
+    ctx.set_fonts(fonts);
 }
