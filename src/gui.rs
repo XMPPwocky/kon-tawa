@@ -2,8 +2,8 @@ use std::sync::{Arc, Mutex};
 
 use egui::{ClippedPrimitive, Context, TexturesDelta};
 use egui_wgpu::renderer::{Renderer, ScreenDescriptor};
-use pixels::{wgpu, PixelsContext};
 use egui_winit::winit::{self, event_loop::EventLoopWindowTarget, window::Window};
+use pixels::{wgpu, PixelsContext};
 
 use crate::SimParams;
 
@@ -25,7 +25,7 @@ struct Gui {
     /// Only show the egui window when true.
     window_open: bool,
 
-    params: Arc<Mutex<SimParams>>
+    params: Arc<Mutex<SimParams>>,
 }
 
 impl Framework {
@@ -146,12 +146,15 @@ impl Framework {
 impl Gui {
     /// Create a `Gui`.
     fn new(params: Arc<Mutex<SimParams>>) -> Self {
-        Self { window_open: true, params }
+        Self {
+            window_open: true,
+            params,
+        }
     }
 
     /// Create the UI using egui.
     fn ui(&mut self, ctx: &Context) {
-        /*egui::TopBottomPanel::top("menubar_container").show(ctx, |ui| {
+        egui::TopBottomPanel::top("menubar_container").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
                     if ui.button("About...").clicked() {
@@ -160,23 +163,27 @@ impl Gui {
                     }
                 })
             });
-        });*/
+        });
 
         let mut params = self.params.lock().unwrap();
 
-            egui::Window::new("\u{F1924}")
+        egui::Window::new("\u{F1924}")
             .open(&mut self.window_open)
             .show(ctx, |ui| {
                 ui.label("\u{F193F}\u{F1906}");
 
                 ui.separator();
 
-                ui.add(egui::Slider::new(&mut params.grad_alpha, 0.0..=1.0).logarithmic(true)
-                    .text("󱥵󱤈󱤝")
+                ui.add(
+                    egui::Slider::new(&mut params.grad_alpha, 0.0..=1.0)
+                        .logarithmic(true)
+                        .text("󱥵󱤈󱤝"),
                 );
-                ui.add(egui::Slider::new(&mut params.grad_damping, 0.0..=1.0).logarithmic(true)
-                .text("󱥵󱥶")
-            );
+                ui.add(
+                    egui::Slider::new(&mut params.grad_damping, 0.0..=1.0)
+                        .logarithmic(true)
+                        .text("󱥵󱥶"),
+                );
             });
     }
 }
@@ -189,9 +196,7 @@ fn setup_custom_fonts(ctx: &egui::Context) {
     // .ttf and .otf files supported.
     fonts.font_data.insert(
         "nasin-nanpa".to_owned(),
-        egui::FontData::from_static(include_bytes!(
-            "../nasin-nanpa-2.5.1.otf"
-        )),
+        egui::FontData::from_static(include_bytes!("../nasin-nanpa-2.5.1.otf")),
     );
 
     // Put my font first (highest priority) for proportional text:

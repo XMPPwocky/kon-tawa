@@ -2,26 +2,32 @@
 pub struct Array2D<T> {
     width: usize,
     height: usize,
-    storage: Vec<T>
+    storage: Vec<T>,
 }
 impl<T> Array2D<T> {
-    pub fn new(
-        width: usize,
-        height: usize,
-        val: T) -> Array2D<T> where T: Clone {
-            assert_ne!(width, 0);
-            assert_ne!(height, 0);
-            
-            Array2D {
-                width,
-                height,
-                storage: std::iter::repeat(val).take(width.checked_mul(height).unwrap()).collect()
-            }
+    pub fn new(width: usize, height: usize, val: T) -> Array2D<T>
+    where
+        T: Clone,
+    {
+        assert_ne!(width, 0);
+        assert_ne!(height, 0);
+
+        Array2D {
+            width,
+            height,
+            storage: std::iter::repeat(val)
+                .take(width.checked_mul(height).unwrap())
+                .collect(),
         }
-    
-    pub fn width(&self) -> usize { self.width }
-    pub fn height(&self) -> usize { self.height }
-    
+    }
+
+    pub fn width(&self) -> usize {
+        self.width
+    }
+    pub fn height(&self) -> usize {
+        self.height
+    }
+
     pub fn get(&self, x: isize, y: isize) -> Option<&T> {
         if x < 0 || y < 0 || x >= self.width as isize || y >= self.height as isize {
             None
@@ -33,7 +39,8 @@ impl<T> Array2D<T> {
         if x < 0 || y < 0 || x >= self.width as isize || y >= self.height as isize {
             None
         } else {
-            self.storage.get_mut((x + (self.width as isize * y)) as usize)
+            self.storage
+                .get_mut((x + (self.width as isize * y)) as usize)
         }
     }
 }
