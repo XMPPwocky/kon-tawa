@@ -14,4 +14,7 @@ egui = "0.20"
 log = "0.4.17"
 glam = "0.23.0"
 rayon = "1.7.0"
+cpal = "0.15.2"
+audio-processor-analysis = "2.1.0"
+audio-processor-traits = "4.1.0"
 

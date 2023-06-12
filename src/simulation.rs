@@ -21,13 +21,6 @@ impl<T> Array2D<T> {
         }
     }
 
-    pub fn width(&self) -> usize {
-        self.width
-    }
-    pub fn height(&self) -> usize {
-        self.height
-    }
-
     pub fn get(&self, x: isize, y: isize) -> Option<&T> {
         if x < 0 || y < 0 || x >= self.width as isize || y >= self.height as isize {
             None

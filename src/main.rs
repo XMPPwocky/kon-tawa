@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 use crate::gui::Framework;
+use audio::DoubleBuffer;
 use egui_winit::winit::{
     dpi::LogicalSize,
     event::{Event, VirtualKeyCode},
@@ -16,6 +17,7 @@ use simulation::Array2D;
 use std::sync::{Arc, Mutex};
 use winit_input_helper::WinitInputHelper;
 
+mod audio;
 mod gui;
 mod simulation;
 
@@ -53,6 +55,11 @@ struct World {
 }
 
 fn main() -> Result<(), Error> {
+    let audio_dbuf = std::sync::Arc::new(DoubleBuffer::new([
+        Vec::new(), Vec::new()
+    ]));
+    let audio_dbuf_cloned = audio_dbuf.clone();
+    let audio_stream = audio::do_audio(audio_dbuf_cloned);
     let event_loop = EventLoop::new();
     let mut input = WinitInputHelper::new();
     let window = {
@@ -116,6 +123,22 @@ fn main() -> Result<(), Error> {
             }
 
             // Update internal state and request a redraw
+            audio_dbuf.flip();
+
+            {
+                let front = audio_dbuf.front();
+                if !front.is_empty() {
+                    for x in 0..WIDTH {
+                        let pres = front[x as usize % front.len()] * 0.5;
+                        let pres = if pres.is_finite() { pres } else { 0.0 };
+                        for y in 0..4 {
+                            *world.pressures.get_mut(x as isize, y).unwrap()
+                                = pres;
+                        }
+                    }
+                }
+            }
+
             world.update();
             world.update();
             world.update();
@@ -160,16 +183,6 @@ fn main() -> Result<(), Error> {
 impl World {
     fn new(params: Arc<Mutex<SimParams>>) -> Self {
         let mut materials = Array2D::new(WIDTH as usize, HEIGHT as usize, Material::Fluid);
-        for y in 252..260 {
-            *materials.get_mut(32, y).unwrap() = Material::Emitter;
-        }
-        for x in 192..194 {
-            for y in 0..HEIGHT as isize {
-                if (y + 0x20) & 0x7F < 0x40 {
-                    *materials.get_mut(x, y).unwrap() = Material::Solid;
-                }
-            }
-        }
 
         Self {
             pressures: Array2D::new(WIDTH as usize, HEIGHT as usize, 0.0),
@@ -185,14 +198,14 @@ impl World {
     /// Update the `World` internal state; bounce the box around the screen.
     fn update(&mut self) {
         if self.ticks % 6 == 0 {
-	   for y in 0..HEIGHT as isize {
+            for x in 0..WIDTH as isize {
                 let offset = (self.ticks / 6) as isize;
-		let mat = if y.wrapping_add(offset) & 0x7F < 0x40 {
-			Material::Solid
-		} else {
-			Material::Fluid
-		};
-		for x in 192..194 {
+                let mat = if x.wrapping_add(offset) & 0x7F < 0x40 {
+                    Material::Solid
+                } else {
+                    Material::Fluid
+                };
+                for y in 380..384 {
                     *self.materials.get_mut(x, y).unwrap() = mat;
                 }
             }
