@@ -289,8 +289,15 @@ impl World {
 
     fn draw(&self, frame: &mut [u8]) {
         for (i, pixel) in frame.chunks_exact_mut(4).enumerate() {
-            let x = i % WIDTH as usize;
-            let y = i / WIDTH as usize;
+            let i = i as isize;
+            let pixel_x = (i % WIDTH as isize - (WIDTH as isize / 2)) as f32 / (HEIGHT as f32);
+            let pixel_y = (i / WIDTH as isize - (HEIGHT as isize / 2)) as f32 / (HEIGHT as f32);
+
+            let r = (pixel_x * pixel_x + pixel_y * pixel_y).sqrt();
+            let theta = ((f32::atan2(pixel_y, pixel_x) / std::f32::consts::PI) * 0.5) + 0.5;
+
+            let x = (theta * WIDTH as f32) as usize;
+            let y = (r * HEIGHT as f32) as usize;
 
             let p = self.pressures[x + (y * WIDTH as usize)];
             let pos = p > 0.0;
